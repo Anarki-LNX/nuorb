@@ -63,6 +63,10 @@ Elazar Gershuni, MIT; `piper/tashkeel/model.onnx`, libtashkeel, MIT). NuOrb does
 ### Hermes Agent base image (`/opt/hermes`)
 
 - [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research, v0.23.4: **MIT** (`/opt/hermes/LICENSE`).
+  **Modified in this image (since NuOrb 0.7.4):**
+  - `agent/tool_executor.py`, function `_pre_tool_block`: an error in the `pre_tool_call` hook dispatch blocks the tool call instead of letting it run. Patch with explanation: `/usr/share/doc/nuorb/patches/hermes_hook_fail_closed.py`, in the repository `docker/patches/`.
+  - Added `/opt/hermes/plugins/nuorb_guard` (NuOrb, MIT): blocks tool calls while NuOrb's policy hook is not registered.
+  Everything else in `/opt/hermes` is unchanged. The image label `org.nuorb.hermes.modified` says the same.
 - Its Python environment (158 packages): permissive (MIT, BSD, Apache-2.0, ISC, PSF), plus MPL-2.0 (certifi, mautrix,
   pathspec, unmodified) and LGPL-3.0 (python-telegram-bot, section 1). `fal_client` and `agent-client-protocol` are
   Apache-2.0, `resvg_py` is MIT (license files in the packages).

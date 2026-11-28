@@ -31,6 +31,7 @@ def answer(msgs):
 
 
 LAST_TOOLS: list[str] = []
+MISSING: list[str] = []   # verlangte Werkzeuge, die Hermes in einer Anfrage nicht angeboten hat
 
 
 def tool_call(body):
@@ -58,6 +59,7 @@ def tool_call(body):
         m = re.search(r"\b(\w*" + re.escape(end) + r")\b", listing)
         real = m.group(1) if m else ("mcp__" + end if "__" in end else end)
         return {"name": "tool_call", "arguments": json.dumps({"calls": [{"name": real, "arguments": json.loads(args)}]})}
+    MISSING.append(end)
     return {"missing": end, "names": names}
 
 
@@ -101,7 +103,7 @@ class H(BaseHTTPRequestHandler):
         if p == "/mock/release":   # Update-Prüfung des Admin-Panels (NUORB_UPDATE_URL in .env.test)
             return self.js(200, {"tag_name": "v99.0.0", "html_url": "http://127.0.0.1/kein-github", "published_at": "2026-12-01T00:00:00Z"})
         if p == "/mock/last-tools":
-            return self.js(200, {"tools": LAST_TOOLS})
+            return self.js(200, {"tools": LAST_TOOLS, "missing": MISSING})
         if p == "/api/version":
             return self.js(200, {"version": "0.0.0-mock"})
         if p == "/api/tags":
@@ -137,6 +139,7 @@ class H(BaseHTTPRequestHandler):
         cid, now = f"chatcmpl-mock{int(time.time()*1000)}", int(time.time())
         usage = {"prompt_tokens": 10, "completion_tokens": 12, "total_tokens": 22}
         if tc:
+            print("mock: Werkzeugaufruf", tc["name"], str(tc["arguments"])[:120], flush=True)
             call = {"id": f"call_{int(time.time()*1000)}", "type": "function", "function": tc}
             if not body.get("stream"):
                 return self.js(200, {"id": cid, "object": "chat.completion", "created": now, "model": MODEL,

@@ -14,6 +14,8 @@ CAPS=+chown,+dac_override,+fowner
 
 mkdir -p /opt/models "$J/logs/ui" "$J/logs/admin" "$J/logs/stt" "$J/config" "$J/admin" "$J/certs" "$J/policy" "$J/cache"
 chown "$HE:$HE" /opt/models
+# Marke der Gateway-Prüfung (hermes_guard.py schreibt sie als hermes, der Healthcheck liest sie)
+mkdir -p /run/nuorb-guard && chown "$HE:$HE" /run/nuorb-guard && chmod 755 /run/nuorb-guard
 
 # Update-Hilfe (v0.7.3): nur wenn ./control eingebunden ist. Anforderungen schreibt nur das Panel (nuorb), Hermes nicht.
 if [ -d /opt/nuorb/control ] && [ ! -L /opt/nuorb/control ]; then
@@ -23,7 +25,7 @@ fi
 
 perms() {
   # NuOrb-Bereich: gehört nuorb. Ausnahmen, die Prozesse von Hermes schreiben: policy (Hook), cache (Wetter),
-  # logs/stt und models-status.json (Spracherkennung).
+  # logs/stt und models-status.json (Spracherkennung, auch der Stimmen-Download des Panels; siehe HERMES_AREAS_IN_J).
   chown "$NU:$HE" "$J"
   chmod 1770 "$J"                     # Hermes darf hier eigene Dateien anlegen, aber keine von nuorb ändern (sticky)
   find "$J" -xdev \( -path "$J/policy" -o -path "$J/cache" -o -path "$J/logs/stt" -o -path "$J/models-status.json" \) -prune \

@@ -19,6 +19,7 @@ import contextvars
 import os
 import re
 import secrets
+import sys
 import time
 from pathlib import Path
 
@@ -38,7 +39,9 @@ PAIRING = CONF / "pairing.json"
 # geht an hermes zurück, damit sich für Hermes nichts ändert. Hermes darf genau diese NuOrb-Dateien lesen:
 NUORB_USER, HERMES_USER = "nuorb", "hermes"
 HERMES_READS = ("mcp.token", "weather.json", "weather.env", "ui.json")   # in CONF: nuorb:hermes 0640 (ui.json: Stimme für die Spracherkennung, keine Geheimnisse)
-HERMES_AREAS_IN_J = ("policy", "cache", "logs/stt")                   # unter J, aber von Hermes-Prozessen geschrieben
+# unter J, aber (auch) von Hermes-Prozessen geschrieben. Gehören immer hermes: im Sticky-Ordner J darf hermes nur eigene
+# Dateien ersetzen. models-status.json schreiben beide (Spracherkennung als hermes, Stimmen-Download aus dem Panel als nuorb).
+HERMES_AREAS_IN_J = ("policy", "cache", "logs/stt", "models-status.json")
 RECLAIM_SKIP = ("installs", "cache")                                  # Laufzeiten und Zwischenspeicher von Hermes, groß
 
 
@@ -66,21 +69,31 @@ def in_nuorb_area(p: Path) -> bool:
     return not any(rel == Path(a) or Path(a) in rel.parents for a in HERMES_AREAS_IN_J)
 
 
-def fix_owner(p: Path) -> None:
-    """Nach dem Schreiben als nuorb: Bereich von Hermes -> hermes, die Lesedateien für Hermes -> nuorb:hermes 0640.
-    Ohne Trennung (Tests, alte Images) passiert nichts. Fehler werden ignoriert: das Schreiben selbst hat geklappt."""
+def fix_owner(p: Path, target: Path | None = None) -> None:
+    """Beim Schreiben als nuorb: Bereich von Hermes -> hermes, die Lesedateien für Hermes -> nuorb:hermes 0640.
+    target: Ziel, wenn p die Zwischendatei vor dem Umbenennen ist (die Regel richtet sich nach dem Ziel). So stimmt der
+    Besitz schon im Moment des Umbenennens. Ohne Trennung (Tests, alte Images) passiert nichts. Fehler werden ignoriert."""
     if not separated():
         return
     h = user_ids(HERMES_USER)
     if not h:
         return
+    t = target or p
     with contextlib.suppress(OSError):
-        if in_nuorb_area(p):
-            if p.parent == CONF and p.name in HERMES_READS:
+        if in_nuorb_area(t):
+            if t.parent == CONF and t.name in HERMES_READS:
                 os.chown(p, os.geteuid(), h[1])
                 os.chmod(p, 0o640)
             return
         os.chown(p, h[0], h[1], follow_symlinks=False)
+
+
+def admin_hooks(adm) -> None:
+    """Hooks von NuOrb-Admin (server.py) für getrennte Benutzer setzen: im Panel und in first_run gleich."""
+    adm.PREPARE_TMP = fix_owner
+    adm.AFTER_WRITE = fix_owner
+    adm.AFTER_HERMES = reclaim_hermes_files
+    adm.ENV_MODE = 0o640
 
 
 def reclaim_hermes_files(root: Path = DATA) -> int:
@@ -304,10 +317,15 @@ def models_status() -> dict:
 
 
 def set_models_status(**kw) -> None:
-    d = models_status()
-    d.update(kw, time=now_iso())
-    _write_json(MODELS_STATUS, d)
-    os.chmod(MODELS_STATUS, 0o644)
+    """Fortschritt der Modell-Downloads für Einrichtung und Panel. Nur eine Anzeige: ein Fehler beim Schreiben darf den
+    Download nie abbrechen (v0.7.4: PermissionError im Sticky-Ordner brach die Erstinstallation ab)."""
+    try:
+        d = models_status()
+        d.update(kw, time=now_iso())
+        _write_json(MODELS_STATUS, d)
+        os.chmod(MODELS_STATUS, 0o644)
+    except OSError as exc:
+        print(f"[nuorb] models-status.json not written ({exc.__class__.__name__}: {exc})", file=sys.stderr, flush=True)
 
 
 def ui_cfg() -> dict:
@@ -372,9 +390,15 @@ def _read_json(p: Path, default):
 def _write_json(p: Path, data) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(f".{p.name}.{secrets.token_hex(4)}")
-    tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, p)
+    try:
+        tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+        os.chmod(tmp, 0o600)
+        fix_owner(tmp, p)   # Besitz vor dem Umbenennen (siehe fix_owner)
+        os.replace(tmp, p)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
     fix_owner(p)
 
 

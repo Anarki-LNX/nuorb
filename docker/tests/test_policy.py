@@ -65,6 +65,42 @@ class FremdeInhalte(unittest.TestCase):
         self.assertIsNone(pre("cronjob_manage"))
 
 
+class Ausfallsicher(unittest.TestCase):
+    """v0.7.4: Kann der Hook seinen Zustand nicht lesen (Ordner ohne Rechte), fällt er nicht auf „erlauben“ zurück."""
+
+    def setUp(self):
+        import os
+        self.os = os
+        pol.RULES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        pol.RULES_FILE.write_text(json.dumps({"rules": []}))
+
+    def tearDown(self):
+        self.os.chmod(pol.RULES_FILE.parent, 0o700)
+        self.os.chmod(pol.RULES_FILE, 0o600)
+
+    def test_regeln_unlesbar_wirkung_braucht_bestaetigung(self):
+        self.os.chmod(pol.RULES_FILE, 0o000)
+        if self.os.access(pol.RULES_FILE, self.os.R_OK):
+            self.skipTest("läuft als root")
+        d = pre("terminal", {"command": "echo hallo"}, session="ausfall-1")
+        self.assertEqual((d or {}).get("action"), "approve", d)
+        self.assertIn("cannot read its tool rules", d["message"])
+
+    def test_ordner_unlesbar_wirkung_braucht_bestaetigung(self):
+        self.os.chmod(pol.RULES_FILE.parent, 0o000)
+        if self.os.access(pol.RULES_FILE.parent, self.os.R_OK):
+            self.skipTest("läuft als root")
+        d = pre("mcp__smarthome_schalten__schalten", {"name": "Licht"}, session="ausfall-2")
+        self.assertEqual((d or {}).get("action"), "approve", d)
+
+    def test_ordner_unlesbar_lesen_bleibt_erlaubt(self):
+        self.os.chmod(pol.RULES_FILE.parent, 0o000)
+        self.assertIsNone(pre("web_search", {"query": "Wetter"}, session="ausfall-3"))
+
+    def test_lesbar_wie_bisher(self):
+        self.assertIsNone(pre("terminal", {"command": "echo hallo"}, session="ausfall-4"))
+
+
 class Heimnetz(unittest.TestCase):
     def setUp(self):
         (T / "config.yaml").write_text("model:\n  base_url: http://192.168.1.50:11434/v1\n")

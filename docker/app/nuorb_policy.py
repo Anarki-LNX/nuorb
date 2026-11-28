@@ -167,6 +167,10 @@ def marked(session: str) -> dict | None:
         return None
     try:
         d = json.loads(mark_file(session).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except PermissionError:   # Marken nicht prüfbar: so behandeln, als wäre fremder Inhalt gelesen (ausfallsicher)
+        return {"t": time.time(), "tool": "unknown, markers unreadable"}
     except (OSError, ValueError):
         return None
     return d if isinstance(d, dict) and time.time() - float(d.get("t", 0)) < MARK_TTL else None
@@ -251,6 +255,20 @@ def home_targets(text: str) -> list[str]:
     return found
 
 
+def state_unreadable() -> str | None:
+    """Kann der Hook seinen eigenen Zustand (Regeln, Marken) nicht lesen, darf er nicht auf „erlauben“ zurückfallen."""
+    for p in (RULES_FILE.parent, MARKS):
+        if p.exists() and not os.access(p, os.R_OK | os.X_OK):
+            return f"{p.name} not accessible"
+    try:
+        RULES_FILE.read_bytes()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        return f"rules.json not readable ({exc.__class__.__name__})"
+    return None
+
+
 def decide(event: str, data: dict) -> dict | None:
     tool = str(data.get("tool_name") or "")
     session = str(data.get("session_id") or "")
@@ -275,6 +293,11 @@ def decide(event: str, data: dict) -> dict | None:
             log_decision(event, tool, session, level, "block", "home network: " + ", ".join(ziele[:3]), args)
             return {"action": "block", "message": "NuOrb blocks access to addresses in the home network from this tool "
                     f"({', '.join(ziele[:3])}). Use the dedicated NuOrb tools instead."}
+    broken = state_unreadable()
+    if broken and level != "allow":   # ausfallsicher: Aktionen mit Wirkung nur mit Bestätigung
+        why = f"NuOrb cannot read its tool rules ({broken}), so this action needs your confirmation."
+        log_decision(event, tool, session, level, "confirm", why, args)
+        return {"action": "approve", "message": why, "rule_key": f"nuorb-zustand:{tool}:{time.time_ns()}"}
     m = marked(session)
     if level == "confirm" or (level == "confirm_after_outside" and m):
         why = f"After reading outside content ({m.get('tool')}), this action needs your confirmation." if (

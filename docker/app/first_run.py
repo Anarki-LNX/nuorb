@@ -36,6 +36,7 @@ def log(msg: str) -> None:
 def hermes(*args: str) -> tuple[int, str]:
     p = subprocess.run(["hermes", *args], capture_output=True, text=True, timeout=180,
                        env={**os.environ, "HOME": str(DATA), "NO_COLOR": "1", "TERM": "dumb"})
+    jc.reclaim_hermes_files()   # was die Hermes-CLI als nuorb geschrieben hat, sofort an hermes (wie im Panel)
     return p.returncode, (p.stdout + p.stderr)[-2000:]
 
 
@@ -69,8 +70,11 @@ def env_set(values: dict[str, str]) -> None:
 def dirs() -> None:
     for d in (jc.CONF, jc.CERTS, jc.J / "admin", jc.J / "ctl", VOICES, jc.MODELS / "stt", DATA / "cache"):
         d.mkdir(parents=True, exist_ok=True)
-    for d in (jc.J, jc.CONF, jc.CERTS, jc.J / "admin"):
-        os.chmod(d, 0o700)
+    # Getrennte Benutzer (v0.7.4): J 1770 und config 0750 wie in nuorb-init, sonst verliert Hermes (Policy-Hook,
+    # Spracherkennung) den Zugang zu seinen Ordnern in J, bis nuorb-init sie zurücksetzt. Ohne Trennung wie bisher 0700.
+    sep = jc.separated()
+    for d, mode in ((jc.J, 0o1770 if sep else 0o700), (jc.CONF, 0o750 if sep else 0o700), (jc.CERTS, 0o700), (jc.J / "admin", 0o700)):
+        os.chmod(d, mode)
     link = DATA / "cache/piper-voices"
     if link.is_symlink() or not link.exists():
         if link.is_symlink() and os.readlink(link) == str(VOICES):
@@ -140,6 +144,7 @@ def first_config() -> None:
     os.environ.setdefault("NUORB_HOME", "/opt/nuorb/home")
     sys.path.insert(0, "/opt/nuorb/admin")
     import server as adm  # NuOrb-Admin: dieselbe Logik wie im Panel
+    jc.admin_hooks(adm)
     path = adm.FILES["config"][0]
     if url and model:
         data = adm.load_config_rt()
@@ -194,6 +199,7 @@ def ensure_mcp() -> None:
     os.environ.setdefault("NUORB_HOME", "/opt/nuorb/home")
     sys.path.insert(0, "/opt/nuorb/admin")
     import server as adm
+    jc.admin_hooks(adm)
     data = adm.load_config_rt()
     want = {"command": "/opt/nuorb/venv/bin/python", "args": ["-I", "/opt/nuorb/app/nuorb_mcp.py"],
             "env": {"ADMIN_URL": os.environ.get("ADMIN_URL", "https://127.0.0.1:8444"),
@@ -214,6 +220,7 @@ def ensure_policy(existing: bool) -> None:
     os.environ.setdefault("NUORB_HOME", "/opt/nuorb/home")
     sys.path.insert(0, "/opt/nuorb/admin")
     import server as adm
+    jc.admin_hooks(adm)
     if not jc.TOOLS_FILE.exists():
         jc._write_json(jc.TOOLS_FILE, {"mode": "narrow", "notice": existing, "since": jc.now_iso()})
         if existing:
@@ -247,6 +254,7 @@ def ensure_smarthome() -> None:
     os.environ.setdefault("NUORB_HOME", "/opt/nuorb/home")
     sys.path.insert(0, "/opt/nuorb/admin")
     import server as adm
+    jc.admin_hooks(adm)
     data = adm.load_config_rt()
     servers = adm.to_plain(data.get("mcp_servers") or {})
     schalter = os.environ.get("NUORB_SMARTHOME", "").strip()
@@ -289,6 +297,7 @@ def ensure_weather() -> None:
     os.environ.setdefault("NUORB_HOME", "/opt/nuorb/home")
     sys.path.insert(0, "/opt/nuorb/admin")
     import server as adm
+    jc.admin_hooks(adm)
     data = adm.load_config_rt()
     cur = adm.to_plain((data.get("mcp_servers") or {}).get("wetter") or {})
     env = {"HERMES_HOME": str(DATA)}

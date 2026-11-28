@@ -130,6 +130,7 @@ def audit(who: str, what: str) -> None:
 # Haken für die Docker-Hülle (getrennte Benutzer, v0.7.4): nach jedem Schreiben bzw. jedem Aufruf der Hermes-CLI
 # Besitz richtigstellen. Ohne Docker bleiben beide leer.
 AFTER_WRITE = None    # Callable[[Path], None]
+PREPARE_TMP = None    # Callable[[Path, Path], None]: (Zwischendatei, Ziel) vor dem Umbenennen, z. B. Besitzer setzen
 ENV_MODE = 0o600      # Docker ab v0.7.4: 0o640 (Gruppe hermes, die Oberfläche liest ihren Schlüssel ohne Sonderrechte)
 AFTER_HERMES = None   # Callable[[], object]
 
@@ -150,6 +151,8 @@ def atomic_write(path: Path, data: str | bytes, mode: int | None = None) -> None
         f.flush()
         os.fsync(f.fileno())
     os.chmod(tmp, mode if mode is not None else (old_mode if old_mode is not None else 0o644))
+    if PREPARE_TMP:   # Besitz schon vor dem Umbenennen: das Ziel ist nie kurz für den falschen Benutzer
+        PREPARE_TMP(tmp, path)
     os.replace(tmp, path)
     if AFTER_WRITE:
         AFTER_WRITE(path)

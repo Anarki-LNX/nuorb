@@ -334,6 +334,28 @@ class HostAllowlist(unittest.TestCase):
 def host_anfrage(host):
     return TestClient(adm.app, base_url=BASE, client=("192.168.1.60", 1)).get("/api/auth/state", headers={"Host": host})
 
+class ZwischendateiVorDemUmbenennen(unittest.TestCase):
+    """v0.7.4-Fix: Besitz und Rechte an der Zwischendatei setzen, bevor sie das Ziel ersetzt (kein Fenster mit falschem Besitzer)."""
+
+    def test_hook_vor_dem_umbenennen(self):
+        ziel = T / "rennen" / "config.yaml"
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        ziel.write_text("alt: 1\n")
+        gesehen = []
+
+        def hook(tmp, final):
+            gesehen.append((tmp.exists(), tmp.read_text(), final == ziel, ziel.read_text()))
+
+        alt = adm.PREPARE_TMP
+        adm.PREPARE_TMP = hook
+        try:
+            adm.atomic_write(ziel, "neu: 2\n")
+        finally:
+            adm.PREPARE_TMP = alt
+        self.assertEqual(gesehen, [(True, "neu: 2\n", True, "alt: 1\n")])   # Ziel noch alt, Zwischendatei fertig
+        self.assertEqual(ziel.read_text(), "neu: 2\n")
+
+
 
 if __name__ == "__main__":
     unittest.main()

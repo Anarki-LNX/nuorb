@@ -38,9 +38,7 @@ weather_admin.TR, weather_admin.LANG = jc.tr, jc.lang
 
 app = adm.app
 # Getrennte Benutzer (v0.7.4): was das Panel als nuorb im Bereich von Hermes schreibt, geht an hermes zurück
-adm.AFTER_WRITE = jc.fix_owner
-adm.AFTER_HERMES = jc.reclaim_hermes_files
-adm.ENV_MODE = 0o640
+jc.admin_hooks(adm)
 PAGES = jc.APP / "pages"
 SVC = {"hermes": None, "stt": "nuorb-stt", "ui": "nuorb-ui", "admin": "nuorb-admin"}
 LOGS = jc.J / "logs"

@@ -1,0 +1,7 @@
+name: nuorb-guard
+version: 1.0.0
+description: "NuOrb: refuses every tool call while NuOrb's policy hook (shell hook nuorb_policy.py pre) is not registered in this process. Hermes skips shell hooks that are not allowlisted or whose config cannot be read with a warning only; this plugin turns that into a hard stop (no silent fail-open)."
+author: NuOrb
+kind: backend
+provides_hooks:
+  - pre_tool_call

@@ -121,6 +121,12 @@ einmal neu koppeln.
   (die Dienste als eigener Benutzer starten), `KILL` (Dienste beenden), `CHOWN`, `FOWNER` und `DAC_OVERRIDE` (Besitz und
   Rechte der Daten setzen, für das Admin-Panel) und `DAC_READ_SEARCH` (nur lesen, für die Oberfläche). Die Dienste selbst
   laufen nicht als root.
+* **Schutzregeln ausfallsicher (ab v0.7.4):** Werkzeuge laufen nur, wenn NuOrbs Regeln nachweislich aktiv sind. Kann
+  Hermes `config.yaml` nicht lesen oder fehlen NuOrbs Hooks, startet das Gateway nicht (Healthcheck „unhealthy“, klare
+  Meldung im Protokoll). Ist der Hook in einem laufenden Hermes nicht aktiv, sperrt die Wache `nuorb_guard` jeden
+  Werkzeugaufruf. Ein Fehler beim Prüfen blockiert den Aufruf, statt ihn durchzulassen (schmaler Patch an Hermes,
+  offengelegt in `patches/` und im Image-Label `org.nuorb.hermes.modified`). Kann der Hook seine Regeln nicht lesen,
+  brauchen Aktionen mit Wirkung eine Bestätigung.
 * **Getrennte Benutzer (ab v0.7.4):** Hermes und damit alle Werkzeuge des Sprachmodells laufen als `hermes`, ohne
   Fähigkeiten. Admin-Panel und Oberfläche laufen als eigener Benutzer `nuorb`. Die Geheimnisse von NuOrb (Admin-Passwort,
   Sitzungen, interne Schlüssel, CA- und Server-Schlüssel, gekoppelte Geräte) gehören nur `nuorb`. Eine eingeschleuste
@@ -317,6 +323,12 @@ keeps the old data and takes over password, memory and paired devices. Browsers 
 memory, reminders, skills, NuOrb tools). Shell, Python, files, browser and sub-agents are off, also after an update.
 Switch them on under “Tools” in the admin panel if you need them. After the assistant has read outside content, every
 action with an effect needs a confirmation card, and shell, Python and browser cannot reach your home network.
+
+**Fail-closed tool rules (from v0.7.4):** tools only run while NuOrb's rules are demonstrably active. If Hermes cannot
+read `config.yaml` or NuOrb's hooks are missing, the gateway does not start (healthcheck unhealthy, clear log message).
+If the hook is not active in a running Hermes, the `nuorb_guard` plugin blocks every tool call. An error during the
+check blocks the call instead of letting it through (a small patch to Hermes, disclosed in `patches/` and in the image
+label `org.nuorb.hermes.modified`). If the hook cannot read its rules, actions with an effect need a confirmation.
 
 **Separate users (from v0.7.4):** Hermes and all tools of the language model run as `hermes` without capabilities, the
 admin panel and the UI as their own user `nuorb`. NuOrb's secrets (admin password, sessions, internal keys, CA and

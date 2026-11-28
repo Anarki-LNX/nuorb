@@ -30,6 +30,7 @@ from fastapi import HTTPException, Request
 from fastapi.routing import APIRoute
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import nuorb_common as jc  # noqa: E402
 import nuorb_weather as nw  # noqa: E402
 
 TR: Callable[[str, str], str] = lambda de, en: en   # noqa: E731  (admin_main setzt jc.tr: Sprache der Anfrage)
@@ -175,6 +176,9 @@ async def weather_test(request: Request):
     period = str(d.get("zeitraum") or "jetzt")
     lang = d.get("lang") if d.get("lang") in ("de", "en") else LANG()
     text, err = await asyncio.to_thread(nw.report, period if period in nw.PERIODS else "jetzt", lang)
+    # Zwischenspeicher, den der Test als nuorb angelegt hat, an hermes (dessen Wetter-Werkzeug schreibt dort weiter)
+    for p in (nw.CACHE_DIR, *nw.CACHE_DIR.glob("*")):
+        jc.fix_owner(p)
     return {"text": text, "error": err}
 
 

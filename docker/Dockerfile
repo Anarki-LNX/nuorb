@@ -13,6 +13,7 @@ COPY src/smarthome/ /f/opt/nuorb/smarthome/
 COPY app/ /f/opt/nuorb/app/
 COPY rootfs/ /f/
 COPY licenses/ /f/usr/share/doc/nuorb/
+COPY patches/ /f/usr/share/doc/nuorb/patches/
 RUN mkdir -p /f/opt/nuorb/home/.config /f/opt/models
 
 FROM ${HERMES_IMAGE}
@@ -22,6 +23,12 @@ USER root
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
+# Schmaler Patch an Hermes: ein Fehler der Hook-Verteilung blockiert den Werkzeugaufruf (statt ihn durchzulassen).
+# Bricht den Build ab, wenn die Stelle im Hermes-Code nicht genau einmal gefunden wird. Siehe patches/.
+COPY patches/hermes_hook_fail_closed.py /tmp/hermes_hook_fail_closed.py
+RUN /opt/hermes/.venv/bin/python /tmp/hermes_hook_fail_closed.py /opt/hermes/agent/tool_executor.py \
+ && /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/agent/tool_executor.py \
+ && rm /tmp/hermes_hook_fail_closed.py
 COPY requirements.txt /opt/nuorb/requirements.txt
 # Eigenes venv mit Debians Python 3.13 (Hermes nutzt sein eigenes 3.14-venv, das bleibt unberührt).
 # requirements.txt ist aus requirements.in erzeugt und enthält jedes Paket mit Hash: pip bricht ab, wenn eine Datei abweicht.
@@ -46,7 +53,8 @@ RUN ln -sfn /opt/data /opt/nuorb/home/.hermes \
 # Debian-Pakete: /usr/share/doc/<paket>/copyright, Lizenztexte: /usr/share/common-licenses/
 LABEL org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later AND LGPL-2.1-or-later AND LGPL-3.0-only" \
       org.opencontainers.image.source="https://github.com/Anarki-LNX/nuorb" \
-      org.opencontainers.image.title="NuOrb"
+      org.opencontainers.image.title="NuOrb" \
+      org.nuorb.hermes.modified="agent/tool_executor.py _pre_tool_block: an error in the pre_tool_call hook dispatch blocks the tool call (patch /usr/share/doc/nuorb/patches/hermes_hook_fail_closed.py); added plugin /opt/hermes/plugins/nuorb_guard"
 
 EXPOSE 8443 8444
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 CMD ["/opt/nuorb/bin/healthcheck"]
@@ -58,4 +66,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 CMD ["/op
 ENV ORT_DISABLE_TELEMETRY=1 HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1
 ARG NUORB_BUILD=dev
 ENV NUORB_BUILD=${NUORB_BUILD}
+# Vor dem Start des Gateways: config.yaml lesbar, NuOrbs Policy-Hooks drin (sonst kein Start, siehe app/hermes_guard.py)
+ENV PATH=/opt/nuorb/guard:/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 CMD ["gateway", "run"]

@@ -1,0 +1,12 @@
+#!/bin/sh
+# NuOrb-Server: steht vor /opt/hermes/bin im PATH des Containers. Nur wenn Hermes' Überwachung das Gateway startet
+# (HERMES_S6_SUPERVISED_CHILD=1, „gateway run“), prüft hermes_guard.py vorher config.yaml und die Policy-Hooks.
+# Fehlt etwas, startet das Gateway nicht (kein Betrieb mit Standardeinstellungen), der Healthcheck meldet unhealthy,
+# und s6 versucht es nach 10 s erneut. Alle anderen Aufrufe gehen unverändert an Hermes.
+if [ "${HERMES_S6_SUPERVISED_CHILD:-}" = 1 ] && [ "${1:-}" = gateway ] && [ "${2:-}" = run ]; then
+  if ! /opt/nuorb/venv/bin/python -I /opt/nuorb/app/hermes_guard.py; then
+    sleep 10
+    exit 1
+  fi
+fi
+exec /opt/hermes/bin/hermes "$@"
